@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type * as messageApi from '@/api/message'
-import { levelLabel, noticeTypeLabel } from './helpers'
+import { levelLabel, noticeTypeLabel } from '@/constants/admin'
 
 const PAGE_SIZE = 5
 const currentPage = ref(1)

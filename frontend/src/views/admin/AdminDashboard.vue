@@ -1,158 +1,85 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+/**
+ * 管理端主页面
+ *
+ * 功能模块：
+ * - 总览/报表
+ * - 用户管理
+ * - 物料、客户、供应商
+ * - 订单、工单
+ * - 库存、质量
+ * - 采购、设备、消息
+ */
+import { onMounted, ref } from 'vue'
 import type { TabsPaneContext } from 'element-plus'
-import * as sysApi from '@/api/sys'
-import * as baseApi from '@/api/base'
-import * as orderApi from '@/api/order'
-import * as productionApi from '@/api/production'
-import * as inventoryApi from '@/api/inventory'
-import * as qualityApi from '@/api/quality'
-import * as purchaseApi from '@/api/purchase'
-import * as deviceApi from '@/api/device'
-import * as messageApi from '@/api/message'
 import { useAuthStore } from '@/stores/auth'
-import * as reportApi from '@/api/report'
-import AdminOverview from './AdminOverview.vue'
-import AdminUsersPane from './AdminUsersPane.vue'
-import AdminMaterialsPane from './AdminMaterialsPane.vue'
-import AdminCustomersPane from './AdminCustomersPane.vue'
-import AdminSuppliersPane from './AdminSuppliersPane.vue'
-import AdminOrdersPane from './AdminOrdersPane.vue'
-import AdminWorkOrdersPane from './AdminWorkOrdersPane.vue'
-import AdminInventoryPane from './AdminInventoryPane.vue'
-import AdminQualityPane from './AdminQualityPane.vue'
-import AdminDevicesPane from './AdminDevicesPane.vue'
-import AdminMessagesPane from './AdminMessagesPane.vue'
 import {
-  deviceStatusLabel,
-  genPurchaseNo,
-  levelLabel,
-  materialTypeLabel,
-  noticeTypeLabel,
-  orderStatusLabel,
-  purchaseStatusLabel,
-  workOrderStatusLabel,
-} from './helpers'
+  useAdminData,
+  useUserOperations,
+  usePurchaseForm,
+  useMessageOperations,
+  useExportReport,
+} from '@/composables/admin'
+import { purchaseStatusLabel } from '@/constants/admin'
+import type { AdminTabName } from '@/types/admin'
 
-const activeTab = ref('overview')
-const showPurchaseDialog = ref(false)
-const purchaseForm = reactive({
-  poNo: '',
-  supplierId: undefined as number | undefined,
-  expectedDate: '',
-  remark: '',
-  lines: [] as { materialId: number; qty: number; price?: number; remark?: string }[],
-})
-const purchaseFormLine = reactive({ materialId: undefined as number | undefined, qty: 0, price: undefined as number | undefined, remark: '' })
-const purchaseSubmitting = ref(false)
+import {
+  AdminOverview,
+  AdminUsersPane,
+  AdminMaterialsPane,
+  AdminCustomersPane,
+  AdminSuppliersPane,
+  AdminOrdersPane,
+  AdminWorkOrdersPane,
+  AdminInventoryPane,
+  AdminQualityPane,
+  AdminDevicesPane,
+  AdminMessagesPane,
+} from '@/components/admin'
 
+const activeTab = ref<AdminTabName>('overview')
 const auth = useAuthStore()
-const state = reactive({
-  users: [] as sysApi.UserVO[],
-  materials: [] as baseApi.Material[],
-  customers: [] as baseApi.Customer[],
-  suppliers: [] as baseApi.Supplier[],
-  orders: [] as orderApi.OrderVO[],
-  workOrders: [] as productionApi.ProductionWorkOrder[],
-  stocks: [] as inventoryApi.InventoryStock[],
-  reasons: [] as qualityApi.QualityReason[],
-  purchaseOrders: [] as purchaseApi.PurchaseOrder[],
-  devices: [] as deviceApi.DeviceAsset[],
-  messages: [] as messageApi.MessageNotice[],
-  orderSummary: null as reportApi.OrderSummaryDTO | null,
-  productionSummary: null as reportApi.ProductionSummaryDTO | null,
-  inventoryTurnover: null as reportApi.InventoryTurnoverDTO | null,
+
+const {
+  state,
+  loadUsers,
+  loadMaterials,
+  loadCustomers,
+  loadSuppliers,
+  loadOrders,
+  loadWorkOrders,
+  loadStocks,
+  loadPurchaseOrders,
+  loadMessages,
+  onOrderRefresh,
+  refreshCurrentTab,
+  loadAllData,
+} = useAdminData()
+
+const { onToggleUserEnabled, onResetPassword, onDeleteUser } = useUserOperations({
+  loadUsers,
 })
 
-async function loadUsers() {
-  const resp = await sysApi.listUsers()
-  if (resp.code === 0) state.users = resp.data ?? []
-}
+const {
+  showPurchaseDialog,
+  purchaseForm,
+  purchaseFormLine,
+  purchaseSubmitting,
+  openPurchaseDialog,
+  addPurchaseLine,
+  removePurchaseLine,
+  submitPurchaseOrder,
+} = usePurchaseForm({
+  loadPurchaseOrders,
+})
 
-async function loadMaterials() {
-  const resp = await baseApi.listMaterials()
-  if (resp.code === 0) state.materials = resp.data ?? []
-}
+const { onMarkMessageRead, onScanMessages, onReceivePurchase } = useMessageOperations({
+  loadMessages,
+  loadPurchaseOrders,
+  loadStocks,
+})
 
-async function loadCustomers() {
-  const resp = await baseApi.listCustomers()
-  if (resp.code === 0) state.customers = resp.data ?? []
-}
-
-async function loadSuppliers() {
-  const resp = await baseApi.listSuppliers()
-  if (resp.code === 0) state.suppliers = resp.data ?? []
-}
-
-async function loadOrders() {
-  const resp = await orderApi.listOrders()
-  if (resp.code === 0) state.orders = resp.data ?? []
-}
-
-async function onOrderRefresh() {
-  await Promise.all([loadOrders(), loadWorkOrders()])
-}
-
-async function loadWorkOrders() {
-  const resp = await productionApi.listWorkOrders()
-  if (resp.code === 0) state.workOrders = resp.data ?? []
-}
-
-async function loadStocks() {
-  const resp = await inventoryApi.listStocks()
-  if (resp.code === 0) state.stocks = resp.data ?? []
-}
-
-async function loadReasons() {
-  const resp = await qualityApi.listQualityReasons(true)
-  if (resp.code === 0) state.reasons = resp.data ?? []
-}
-
-async function loadPurchaseOrders() {
-  const resp = await purchaseApi.listPurchaseOrders()
-  if (resp.code === 0) state.purchaseOrders = resp.data ?? []
-}
-
-async function loadDevices() {
-  const resp = await deviceApi.listDevices()
-  if (resp.code === 0) state.devices = resp.data ?? []
-}
-
-async function loadMessages() {
-  const resp = await messageApi.listMessages(true)
-  if (resp.code === 0) state.messages = resp.data ?? []
-}
-
-async function loadReportSummary() {
-  const [o, p, inv] = await Promise.all([
-    reportApi.getOrderSummary(),
-    reportApi.getProductionSummary(),
-    reportApi.getInventoryTurnover(),
-  ])
-  if (o.code === 0) state.orderSummary = o.data ?? null
-  if (p.code === 0) state.productionSummary = p.data ?? null
-  if (inv.code === 0) state.inventoryTurnover = inv.data ?? null
-}
-
-async function refreshCurrentTab(tabName: string) {
-  try {
-    if (tabName === 'users') await loadUsers()
-    else if (tabName === 'materials') await loadMaterials()
-    else if (tabName === 'customers') await loadCustomers()
-    else if (tabName === 'suppliers') await loadSuppliers()
-    else if (tabName === 'orders') await loadOrders()
-    else if (tabName === 'workOrders') await loadWorkOrders()
-    else if (tabName === 'inventory') await loadStocks()
-    else if (tabName === 'quality') await loadReasons()
-    else if (tabName === 'purchase') await loadPurchaseOrders()
-    else if (tabName === 'devices') await loadDevices()
-    else if (tabName === 'messages') await loadMessages()
-    else if (tabName === 'report') await loadReportSummary()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '加载失败')
-  }
-}
+const { onExportReport } = useExportReport()
 
 function handleTabClick(pane: TabsPaneContext) {
   if (typeof pane.paneName === 'string') {
@@ -160,177 +87,11 @@ function handleTabClick(pane: TabsPaneContext) {
   }
 }
 
-async function onToggleUserEnabled(row: sysApi.UserVO) {
-  try {
-    const nextEnabled = !row.enabled
-    await sysApi.updateUser(row.id, { roleCode: row.roleCode, enabled: nextEnabled })
-    row.enabled = nextEnabled
-    ElMessage.success('已更新用户状态')
-  } catch (e: any) {
-    ElMessage.error(e?.message || '更新失败')
-  }
+function handleExportReport() {
+  onExportReport(state.orders, state.workOrders, state.stocks)
 }
 
-async function onResetPassword(row: sysApi.UserVO) {
-  try {
-    await ElMessageBox.confirm(`确定将用户 ${row.username} 的密码重置为 123456 吗？`, '提示', {
-      type: 'warning',
-    })
-    await sysApi.resetPassword(row.id)
-    ElMessage.success('已重置密码为 123456')
-  } catch {
-    // ignore cancel
-  }
-}
-
-async function onDeleteUser(row: sysApi.UserVO) {
-  try {
-    await ElMessageBox.confirm(`确定删除用户 ${row.username} 吗？此操作不可恢复！`, '警告', {
-      type: 'warning',
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-    })
-    await sysApi.deleteUser(row.id)
-    ElMessage.success('已删除用户')
-    await loadUsers()
-  } catch {
-    // ignore cancel
-  }
-}
-
-async function onReceivePurchase(po: purchaseApi.PurchaseOrder) {
-  try {
-    await ElMessageBox.confirm(`确认将采购单 ${po.poNo} 全部收货并入库吗？`, '提示', { type: 'warning' })
-    await purchaseApi.receiveAll(po.id)
-    ElMessage.success('收货完成')
-    await loadPurchaseOrders()
-    await loadStocks()
-  } catch {
-    // ignore
-  }
-}
-
-async function onMarkMessageRead(row: messageApi.MessageNotice) {
-  try {
-    await messageApi.markRead(row.id)
-    row.read = true
-  } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
-  }
-}
-
-async function onScanMessages() {
-  try {
-    await messageApi.scanMessages()
-    ElMessage.success('已触发扫描')
-    await loadMessages()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '扫描失败')
-  }
-}
-
-function exportCsv(name: string, rows: string[][]) {
-  const BOM = '\uFEFF'
-  const csv = BOM + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${name}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function onExportReport() {
-  const tabs = [
-    { name: '订单', rows: [['订单号', '客户ID', '状态', '交货期', '产品物料ID', '数量', '工单号'] as string[]].concat(state.orders.map((o) => [o.orderNo, String(o.customerId), o.status ?? '', o.deliveryDate ?? '', String(o.productMaterialId), String(o.qty), o.workOrderNo ?? ''])) },
-    { name: '工单', rows: [['工单号', '订单ID', '产品物料ID', '数量', '状态', '计划完成'] as string[]].concat(state.workOrders.map((w) => [w.workOrderNo, String(w.orderId), String(w.productMaterialId), String(w.qty), w.status ?? '', w.dueDate ?? ''])) },
-    { name: '库存', rows: [['物料ID', '数量', '更新时间'] as string[]].concat(state.stocks.map((s) => [String(s.materialId), String(s.qty), s.updatedAt ?? ''])) },
-  ]
-  tabs.forEach((t) => {
-    if (t.rows.length > 1) exportCsv(t.name, t.rows)
-  })
-  ElMessage.success('已导出 CSV')
-}
-
-function openPurchaseDialog() {
-  purchaseForm.poNo = genPurchaseNo()
-  purchaseForm.supplierId = undefined
-  purchaseForm.expectedDate = ''
-  purchaseForm.remark = ''
-  purchaseForm.lines = []
-  purchaseFormLine.materialId = undefined
-  purchaseFormLine.qty = 0
-  purchaseFormLine.price = undefined
-  purchaseFormLine.remark = ''
-  showPurchaseDialog.value = true
-}
-
-function addPurchaseLine() {
-  if (purchaseFormLine.materialId == null || purchaseFormLine.qty <= 0) {
-    ElMessage.warning('请选择物料并输入数量')
-    return
-  }
-  purchaseForm.lines.push({
-    materialId: purchaseFormLine.materialId,
-    qty: purchaseFormLine.qty,
-    price: purchaseFormLine.price,
-    remark: purchaseFormLine.remark || undefined,
-  })
-  purchaseFormLine.materialId = undefined
-  purchaseFormLine.qty = 0
-  purchaseFormLine.price = undefined
-  purchaseFormLine.remark = ''
-}
-
-function removePurchaseLine(idx: number) {
-  purchaseForm.lines.splice(idx, 1)
-}
-
-async function submitPurchaseOrder() {
-  if (!purchaseForm.poNo.trim()) {
-    ElMessage.warning('请输入采购单号')
-    return
-  }
-  if (purchaseForm.lines.length === 0) {
-    ElMessage.warning('请至少添加一行物料')
-    return
-  }
-  purchaseSubmitting.value = true
-  try {
-    await purchaseApi.createPurchaseOrder({
-      poNo: purchaseForm.poNo.trim(),
-      supplierId: purchaseForm.supplierId,
-      expectedDate: purchaseForm.expectedDate || undefined,
-      remark: purchaseForm.remark || undefined,
-      lines: purchaseForm.lines.map((l) => ({ materialId: l.materialId, qty: l.qty, price: l.price, remark: l.remark })),
-    })
-    ElMessage.success('创建成功')
-    showPurchaseDialog.value = false
-    await loadPurchaseOrders()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '创建失败')
-  } finally {
-    purchaseSubmitting.value = false
-  }
-}
-
-onMounted(async () => {
-  await Promise.all([
-    loadUsers(),
-    loadMaterials(),
-    loadCustomers(),
-    loadSuppliers(),
-    loadOrders(),
-    loadWorkOrders(),
-    loadStocks(),
-    loadReasons(),
-    loadPurchaseOrders(),
-    loadDevices(),
-    loadMessages(),
-    loadReportSummary(),
-  ])
-})
+onMounted(loadAllData)
 </script>
 
 <template>
@@ -351,7 +112,7 @@ onMounted(async () => {
           :order-summary="state.orderSummary"
           :production-summary="state.productionSummary"
           :inventory-turnover="state.inventoryTurnover"
-          @export-report="onExportReport"
+          @export-report="handleExportReport"
         />
       </el-tab-pane>
 
@@ -514,42 +275,6 @@ onMounted(async () => {
   color: #8f97ab;
 }
 
-.metric-row {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.metric-card {
-  border: 0;
-  border-radius: 12px;
-  box-shadow: inset 0 0 0 1px #e7efff;
-  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
-}
-
-.metric-card h2 {
-  margin: 10px 0 0;
-  color: #2f3a50;
-}
-
-.chart-wrap {
-  height: 280px;
-  margin-top: 12px;
-  border-radius: 12px;
-  padding: 8px;
-  background: #fff;
-  box-shadow: inset 0 0 0 1px #e7efff;
-}
-
-.tip-text {
-  margin-top: 12px;
-  color: #909399;
-}
-
-.soft-btn {
-  border-radius: 10px;
-}
-
 .action-bar {
   margin-bottom: 8px;
 }
@@ -597,4 +322,3 @@ onMounted(async () => {
   border-radius: 10px;
 }
 </style>
-

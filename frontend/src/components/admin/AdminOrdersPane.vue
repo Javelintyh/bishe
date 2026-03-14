@@ -3,7 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as orderApi from '@/api/order'
 import type * as baseApi from '@/api/base'
-import { orderStatusLabel } from './helpers'
+import { orderStatusLabel } from '@/constants/admin'
 
 const PAGE_SIZE = 5
 const currentPage = ref(1)

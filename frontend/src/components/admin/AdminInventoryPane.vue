@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import type * as inventoryApi from '@/api/inventory'
 import type * as baseApi from '@/api/base'
-import { materialTypeLabel } from './helpers'
+import { materialTypeLabel } from '@/constants/admin'
 
 const PAGE_SIZE = 5
 const currentPage = ref(1)

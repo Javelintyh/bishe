@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type * as deviceApi from '@/api/device'
-import { deviceStatusLabel } from './helpers'
+import { deviceStatusLabel } from '@/constants/admin'
 
 const PAGE_SIZE = 5
 const currentPage = ref(1)

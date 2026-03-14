@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import type * as productionApi from '@/api/production'
 import type * as orderApi from '@/api/order'
 import type * as baseApi from '@/api/base'
-import { workOrderStatusLabel } from './helpers'
+import { workOrderStatusLabel } from '@/constants/admin'
 
 const PAGE_SIZE = 5
 const currentPage = ref(1)

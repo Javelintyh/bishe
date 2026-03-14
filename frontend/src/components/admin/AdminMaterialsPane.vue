@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as baseApi from '@/api/base'
-import { materialTypeLabel } from './helpers'
+import { materialTypeLabel } from '@/constants/admin'
 
 const PAGE_SIZE = 5
 const currentPage = ref(1)
