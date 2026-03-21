@@ -1,0 +1,26 @@
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Java backend
+backend/target/
+backend/*.log
+*.class
+
+# Node frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/coverage/
+frontend/*.tsbuildinfo
+
+# Env
+.env
+.env.*
+
+# Accidental nested copy
+factory-project/

@@ -11,7 +11,6 @@
  * - 采购、设备、消息
  */
 import { onMounted, ref } from 'vue'
-import type { TabsPaneContext } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import {
   useAdminData,
@@ -19,8 +18,9 @@ import {
   usePurchaseForm,
   useMessageOperations,
   useExportReport,
+  useAdminDashboardActions,
+  useAdminPageActions,
 } from '@/composables/admin'
-import { purchaseStatusLabel } from '@/constants/admin'
 import type { AdminTabName } from '@/types/admin'
 
 import {
@@ -32,8 +32,7 @@ import {
   AdminOrdersPane,
   AdminWorkOrdersPane,
   AdminInventoryPane,
-  AdminQualityPane,
-  AdminDevicesPane,
+  AdminPurchasePane,
   AdminMessagesPane,
 } from '@/components/admin'
 
@@ -73,25 +72,43 @@ const {
   loadPurchaseOrders,
 })
 
-const { onMarkMessageRead, onScanMessages, onReceivePurchase } = useMessageOperations({
+const ordersPaneRef = ref<any>(null)
+
+const { onScanMessages, onMarkPurchased, onReceivePurchaseFromMessage } = useMessageOperations({
   loadMessages,
   loadPurchaseOrders,
   loadStocks,
 })
 
 const { onExportReport } = useExportReport()
+const { handleTabClick, handleExportReport, initPage } = useAdminPageActions({
+  refreshCurrentTab,
+  onExportReport,
+  state,
+  loadAllData,
+})
+const {
+  messagesReminderCount,
+  onWorkOrderRemind,
+  closePurchaseDialog,
+  onAfterCreateOrderByMessage,
+  submitPurchaseOrderFromStockLowMsg,
+  onCreatePurchaseFromRequest,
+  onCreatePurchaseFromStockLow,
+  stockLowActionLabel,
+} = useAdminDashboardActions({
+  activeTab,
+  state,
+  loadMessages,
+  onOrderRefresh,
+  onScanMessages,
+  openPurchaseDialog,
+  showPurchaseDialog,
+  purchaseForm,
+  submitPurchaseOrder,
+})
 
-function handleTabClick(pane: TabsPaneContext) {
-  if (typeof pane.paneName === 'string') {
-    refreshCurrentTab(pane.paneName)
-  }
-}
-
-function handleExportReport() {
-  onExportReport(state.orders, state.workOrders, state.stocks)
-}
-
-onMounted(loadAllData)
+onMounted(initPage)
 </script>
 
 <template>
@@ -139,7 +156,14 @@ onMounted(loadAllData)
       </el-tab-pane>
 
       <el-tab-pane label="订单" name="orders">
-        <AdminOrdersPane :orders="state.orders" :customers="state.customers" :materials="state.materials" @refresh="onOrderRefresh" />
+        <AdminOrdersPane
+          ref="ordersPaneRef"
+          :orders="state.orders"
+          :customers="state.customers"
+          :materials="state.materials"
+          :on-after-create-by-message="onAfterCreateOrderByMessage"
+          @refresh="onOrderRefresh"
+        />
       </el-tab-pane>
 
       <el-tab-pane label="工单" name="workOrders">
@@ -150,101 +174,45 @@ onMounted(loadAllData)
         <AdminInventoryPane :stocks="state.stocks" :materials="state.materials" />
       </el-tab-pane>
 
-      <el-tab-pane label="质量原因" name="quality">
-        <AdminQualityPane :reasons="state.reasons" />
-      </el-tab-pane>
-
       <el-tab-pane label="采购" name="purchase">
-        <div class="action-bar">
-          <el-button size="small" type="primary" @click="openPurchaseDialog">新建采购单</el-button>
-        </div>
-        <el-table :data="state.purchaseOrders" style="width: 100%" size="small">
-          <el-table-column prop="poNo" label="采购单号" />
-          <el-table-column prop="supplierId" label="供应商ID" width="120" />
-          <el-table-column label="状态" width="100">
-            <template #default="{ row }">
-              {{ purchaseStatusLabel(row.status) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="expectedDate" label="预计到货" width="140" />
-          <el-table-column prop="remark" label="备注" />
-          <el-table-column label="操作" width="160">
-            <template #default="{ row }">
-              <el-button
-                v-if="row.status !== 'DONE'"
-                link
-                type="primary"
-                size="small"
-                @click="onReceivePurchase(row)"
-              >
-                全部收货
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-dialog v-model="showPurchaseDialog" title="新建采购单" width="560px" destroy-on-close @close="showPurchaseDialog = false">
-          <el-form label-width="100px" @submit.prevent>
-            <el-form-item label="采购单号">
-              <el-input v-model="purchaseForm.poNo" placeholder="如 PO20250306001" />
-            </el-form-item>
-            <el-form-item label="供应商">
-              <el-select v-model="purchaseForm.supplierId" clearable placeholder="选择供应商" style="width: 100%">
-                <el-option v-for="s in state.suppliers" :key="s.id" :label="s.supplierName" :value="s.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="预计到货">
-              <el-date-picker
-                v-model="purchaseForm.expectedDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                placeholder="选择预计到货日期"
-                style="width: 100%"
-              />
-            </el-form-item>
-            <el-form-item label="备注">
-              <el-input v-model="purchaseForm.remark" type="textarea" rows="2" />
-            </el-form-item>
-            <el-form-item label="明细">
-              <div style="width: 100%">
-                <el-table :data="purchaseForm.lines" size="small" max-height="200">
-                  <el-table-column label="物料" min-width="140">
-                    <template #default="{ row }">
-                      {{ state.materials.find((m) => m.id === row.materialId)?.materialCode ?? row.materialId }}
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="qty" label="数量" width="80" />
-                  <el-table-column label="操作" width="60">
-                    <template #default="{ $index }">
-                      <el-button link type="danger" size="small" @click="removePurchaseLine($index)">删除</el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
-                <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: flex-start">
-                  <el-select v-model="purchaseFormLine.materialId" placeholder="物料" clearable style="width: 160px">
-                    <el-option v-for="m in state.materials" :key="m.id" :label="`${m.materialCode} ${m.materialName}`" :value="m.id" />
-                  </el-select>
-                  <el-input-number v-model="purchaseFormLine.qty" :min="1" :step="1" placeholder="数量" style="width: 100px" />
-                  <el-button type="primary" size="small" @click="addPurchaseLine">添加行</el-button>
-                </div>
-              </div>
-            </el-form-item>
-          </el-form>
-          <template #footer>
-            <el-button @click="showPurchaseDialog = false">取消</el-button>
-            <el-button type="primary" :loading="purchaseSubmitting" @click="submitPurchaseOrder">确定</el-button>
-          </template>
-        </el-dialog>
+        <AdminPurchasePane
+          :purchase-orders="state.purchaseOrders"
+          :suppliers="state.suppliers"
+          :materials="state.materials"
+          :on-mark-purchased="onMarkPurchased"
+          :show-purchase-dialog="showPurchaseDialog"
+          :purchase-form="purchaseForm"
+          :purchase-form-line="purchaseFormLine"
+          :purchase-submitting="purchaseSubmitting"
+          :open-purchase-dialog="openPurchaseDialog"
+          :add-purchase-line="addPurchaseLine"
+          :remove-purchase-line="removePurchaseLine"
+          :submit-purchase-order="submitPurchaseOrderFromStockLowMsg"
+          :close-purchase-dialog="closePurchaseDialog"
+        />
       </el-tab-pane>
 
-      <el-tab-pane label="设备" name="devices">
-        <AdminDevicesPane :devices="state.devices" />
-      </el-tab-pane>
+      
 
-      <el-tab-pane label="消息" name="messages">
+      <el-tab-pane name="messages">
+        <template #label>
+          <el-badge
+            :value="messagesReminderCount"
+            :hidden="messagesReminderCount === 0"
+            :max="99"
+            class="tab-badge"
+          >
+            <span>消息</span>
+          </el-badge>
+        </template>
         <AdminMessagesPane
           :messages="state.messages"
           :on-scan-messages="onScanMessages"
-          :on-mark-message-read="onMarkMessageRead"
+          :on-purchase-inbound="onReceivePurchaseFromMessage"
+          :on-create-purchase-from-request="onCreatePurchaseFromRequest"
+          :on-create-purchase-from-stock-low="onCreatePurchaseFromStockLow"
+          :stock-low-action-label="stockLowActionLabel"
+          :on-work-order-remind="onWorkOrderRemind"
         />
       </el-tab-pane>
     </el-tabs>
@@ -277,6 +245,11 @@ onMounted(loadAllData)
 
 .action-bar {
   margin-bottom: 8px;
+}
+
+.tab-badge :deep(.el-badge__content) {
+  top: 2px;
+  right: -4px;
 }
 
 .page-tabs :deep(.el-tabs__item) {

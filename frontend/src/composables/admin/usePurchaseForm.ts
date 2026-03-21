@@ -92,18 +92,22 @@ export function usePurchaseForm(options: UsePurchaseFormOptions) {
     purchaseForm.lines.splice(idx, 1)
   }
 
-  async function submitPurchaseOrder() {
+  async function submitPurchaseOrder(): Promise<boolean> {
     if (!purchaseForm.poNo.trim()) {
       ElMessage.warning('请输入采购单号')
-      return
+      return false
+    }
+    if (purchaseForm.supplierId == null) {
+      ElMessage.warning('请选择供应商/公司')
+      return false
     }
     if (purchaseForm.lines.length === 0) {
       ElMessage.warning('请至少添加一行物料')
-      return
+      return false
     }
     purchaseSubmitting.value = true
     try {
-      await purchaseApi.createPurchaseOrder({
+      const resp = await purchaseApi.createPurchaseOrder({
         poNo: purchaseForm.poNo.trim(),
         supplierId: purchaseForm.supplierId,
         expectedDate: purchaseForm.expectedDate || undefined,
@@ -115,11 +119,18 @@ export function usePurchaseForm(options: UsePurchaseFormOptions) {
           remark: l.remark,
         })),
       })
+      if (resp.code !== 0) {
+        ElMessage.error(resp.message || '创建失败')
+        return false
+      }
       ElMessage.success('创建成功')
       showPurchaseDialog.value = false
       await loadPurchaseOrders()
+      return true
     } catch (e: any) {
-      ElMessage.error(e?.message || '创建失败')
+      const backendMsg = e?.response?.data?.message
+      ElMessage.error(backendMsg || e?.message || '创建失败')
+      return false
     } finally {
       purchaseSubmitting.value = false
     }

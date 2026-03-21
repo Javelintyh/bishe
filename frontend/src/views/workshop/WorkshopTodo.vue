@@ -10,17 +10,25 @@
  * - BOM 配方管理
  */
 import { onMounted, ref } from 'vue'
-import { useWorkshopData, useReportForm, useBomEditor } from '@/composables/workshop'
+import { useWorkshopData, useReportForm, useBomEditor, useWorkshopMessages, useWorkshopPageActions } from '@/composables/workshop'
 import {
   WorkOrderTable,
   ReportFormPane,
   ReportHistoryTable,
   BomEditorPane,
   KanbanChart,
+  WorkshopMessagesPane,
 } from '@/components/workshop'
 import type { WorkshopTabName } from '@/types/workshop'
 
 const activeTab = ref<WorkshopTabName>('kanban')
+const {
+  workshopMessages,
+  messagesLoading,
+  workshopMessageCount,
+  loadWorkshopMessages,
+  handleWorkshopMessage,
+} = useWorkshopMessages()
 
 const {
   loading,
@@ -33,6 +41,11 @@ const {
   getMaterialUnit,
   getProductBomInfo,
 } = useWorkshopData()
+
+const { refreshAll, initPage } = useWorkshopPageActions({
+  loadData,
+  loadWorkshopMessages,
+})
 
 const {
   reportForm,
@@ -59,7 +72,7 @@ const {
   getBomMap: () => state.bomMap,
 })
 
-onMounted(() => loadData())
+onMounted(initPage)
 </script>
 
 <template>
@@ -71,7 +84,14 @@ onMounted(() => loadData())
             <div class="page-title">车间看板</div>
             <div class="page-subtitle">生产工单、报工管理</div>
           </div>
-          <el-button class="soft-btn" type="primary" :loading="loading" @click="loadData">刷新数据</el-button>
+          <el-button
+            class="soft-btn"
+            type="primary"
+            :loading="loading || messagesLoading"
+            @click="refreshAll"
+          >
+            刷新数据
+          </el-button>
         </div>
       </template>
 
@@ -127,6 +147,19 @@ onMounted(() => loadData())
             @add-line="addBomLine"
             @remove-line="removeBomLine"
             @save="saveBom"
+          />
+        </el-tab-pane>
+
+        <el-tab-pane name="messages">
+          <template #label>
+            <el-badge :value="workshopMessageCount" :hidden="workshopMessageCount === 0" :max="99" class="tab-badge">
+              <span>消息</span>
+            </el-badge>
+          </template>
+          <WorkshopMessagesPane
+            :messages="workshopMessages"
+            :loading="messagesLoading"
+            :on-acknowledge="handleWorkshopMessage"
           />
         </el-tab-pane>
       </el-tabs>

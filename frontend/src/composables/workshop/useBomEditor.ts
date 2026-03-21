@@ -68,6 +68,14 @@ export function useBomEditor(options: UseBomEditorOptions) {
       return
     }
 
+    // 防止重复原材料造成后端 unique key 冲突（从而避免 500）。
+    const materialIds = validLines.map((l) => l.materialId!)
+    const uniq = new Set(materialIds)
+    if (uniq.size !== materialIds.length) {
+      ElMessage.warning('BOM配方中同一原材料不能重复添加')
+      return
+    }
+
     bomSubmitting.value = true
     try {
       await baseApi.bulkSetBom({

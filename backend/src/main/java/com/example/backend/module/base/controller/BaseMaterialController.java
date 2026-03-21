@@ -5,22 +5,35 @@ import com.example.backend.common.api.ApiResponse;
 import com.example.backend.common.exception.ApiException;
 import com.example.backend.module.base.dto.MaterialCreateRequest;
 import com.example.backend.module.base.dto.MaterialUpdateRequest;
+import com.example.backend.module.base.entity.BaseSupplier;
 import com.example.backend.module.base.entity.BaseMaterial;
 import com.example.backend.module.base.service.BaseMaterialService;
+import com.example.backend.module.base.service.BaseSupplierRawMaterialService;
+import com.example.backend.module.base.service.BaseSupplierService;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/base/materials")
 @PreAuthorize("hasAnyRole('ADMIN','WAREHOUSE','WORKSHOP')")
 public class BaseMaterialController {
     private final BaseMaterialService baseMaterialService;
+    private final BaseSupplierRawMaterialService baseSupplierRawMaterialService;
+    private final BaseSupplierService baseSupplierService;
 
-    public BaseMaterialController(BaseMaterialService baseMaterialService) {
+    public BaseMaterialController(
+            BaseMaterialService baseMaterialService,
+            BaseSupplierRawMaterialService baseSupplierRawMaterialService,
+            BaseSupplierService baseSupplierService
+    ) {
         this.baseMaterialService = baseMaterialService;
+        this.baseSupplierRawMaterialService = baseSupplierRawMaterialService;
+        this.baseSupplierService = baseSupplierService;
     }
 
     @GetMapping
@@ -79,6 +92,27 @@ public class BaseMaterialController {
     public ApiResponse<Void> delete(@PathVariable Long id) {
         baseMaterialService.removeById(id);
         return ApiResponse.ok();
+    }
+
+    /**
+     * 获取包含指定原材料的供应商
+     */
+    @GetMapping("/{materialId}/suppliers")
+    public ApiResponse<List<BaseSupplier>> listSuppliersByRawMaterial(@PathVariable Long materialId) {
+        Set<Long> supplierIds = baseSupplierRawMaterialService.list(
+                        new LambdaQueryWrapper<com.example.backend.module.base.entity.BaseSupplierRawMaterial>()
+                                .eq(com.example.backend.module.base.entity.BaseSupplierRawMaterial::getMaterialId, materialId))
+                .stream()
+                .map(com.example.backend.module.base.entity.BaseSupplierRawMaterial::getSupplierId)
+                .collect(Collectors.toSet());
+
+        if (supplierIds.isEmpty()) {
+            return ApiResponse.ok(List.of());
+        }
+
+        LambdaQueryWrapper<BaseSupplier> qw = new LambdaQueryWrapper<>();
+        qw.in(BaseSupplier::getId, supplierIds).eq(BaseSupplier::getEnabled, true).orderByDesc(BaseSupplier::getId);
+        return ApiResponse.ok(baseSupplierService.list(qw));
     }
 }
 

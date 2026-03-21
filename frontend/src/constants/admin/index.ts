@@ -17,8 +17,8 @@ export type PurchaseStatusCode = (typeof PurchaseStatus)[keyof typeof PurchaseSt
 /** 采购状态标签映射 */
 export const PURCHASE_STATUS_LABELS: Record<PurchaseStatusCode, string> = {
   [PurchaseStatus.CREATED]: '已创建',
-  [PurchaseStatus.RECEIVING]: '收货中',
-  [PurchaseStatus.DONE]: '已完成',
+  [PurchaseStatus.RECEIVING]: '已购入',
+  [PurchaseStatus.DONE]: '已入库',
 }
 
 /** 设备状态枚举 */
@@ -58,7 +58,14 @@ export const MESSAGE_LEVEL_LABELS: Record<MessageLevelCode, string> = {
 /** 通知类型枚举 */
 export const NoticeType = {
   STOCK_LOW: 'STOCK_LOW',
+  CAPACITY_WARN_PRODUCT: 'CAPACITY_WARN_PRODUCT',
+  CAPACITY_WARN_RAW: 'CAPACITY_WARN_RAW',
+  WO_DUE_SOON: 'WO_DUE_SOON',
   WO_OVERDUE: 'WO_OVERDUE',
+  PURCHASE_ARRIVED: 'PURCHASE_ARRIVED',
+  PURCHASE_REQUEST: 'PURCHASE_REQUEST',
+  WH_INBOUND_URGE: 'WH_INBOUND_URGE',
+  WS_PRODUCE_URGE: 'WS_PRODUCE_URGE',
 } as const
 
 export type NoticeTypeCode = (typeof NoticeType)[keyof typeof NoticeType]
@@ -66,7 +73,14 @@ export type NoticeTypeCode = (typeof NoticeType)[keyof typeof NoticeType]
 /** 通知类型标签映射 */
 export const NOTICE_TYPE_LABELS: Record<NoticeTypeCode, string> = {
   [NoticeType.STOCK_LOW]: '库存预警',
+  [NoticeType.CAPACITY_WARN_PRODUCT]: '成品容量预警',
+  [NoticeType.CAPACITY_WARN_RAW]: '原材料容量预警',
+  [NoticeType.WO_DUE_SOON]: '工单临期',
   [NoticeType.WO_OVERDUE]: '工单超期',
+  [NoticeType.PURCHASE_ARRIVED]: '采购到货',
+  [NoticeType.PURCHASE_REQUEST]: '采购请求',
+  [NoticeType.WH_INBOUND_URGE]: '催促仓库入库',
+  [NoticeType.WS_PRODUCE_URGE]: '催促车间生产',
 }
 
 /** 状态标签获取函数 */

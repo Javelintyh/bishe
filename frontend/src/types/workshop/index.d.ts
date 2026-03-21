@@ -37,4 +37,4 @@ export interface BomEditLine {
 }
 
 /** 车间端Tab类型 */
-export type WorkshopTabName = 'kanban' | 'pending' | 'report' | 'history' | 'bom'
+export type WorkshopTabName = 'kanban' | 'pending' | 'report' | 'history' | 'bom' | 'messages'

@@ -50,6 +50,7 @@ CREATE TABLE sys_admin_invitation (
 -- =========================
 DROP TABLE IF EXISTS base_bom;
 DROP TABLE IF EXISTS base_supplier;
+DROP TABLE IF EXISTS base_supplier_raw_material;
 DROP TABLE IF EXISTS base_customer;
 DROP TABLE IF EXISTS base_material;
 
@@ -102,6 +103,20 @@ CREATE TABLE base_supplier (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =========================
+-- 1.1 供应商-原材料可售映射
+-- =========================
+-- 约定：用于实现“选择公司 => 只能选其售卖的原材料；选择原材料 => 只能选包含该原材料的公司”
+-- 注意：此表不强制 material_type，只约定业务层只用于 RAW 原材料筛选。
+CREATE TABLE base_supplier_raw_material (
+  supplier_id BIGINT NOT NULL,
+  material_id BIGINT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (supplier_id, material_id),
+  INDEX idx_ssrm_supplier(supplier_id),
+  INDEX idx_ssrm_material(material_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- =========================
 -- 2. 订单
 -- =========================
 DROP TABLE IF EXISTS order_detail;
@@ -114,6 +129,8 @@ CREATE TABLE order_main (
   status VARCHAR(32) NOT NULL DEFAULT 'PENDING', -- PENDING/PRODUCING/DONE/DELIVERED
   delivery_date DATE,
   actual_delivery_date DATE,
+  urgent TINYINT(1) NOT NULL DEFAULT 0,
+  pinned TINYINT(1) NOT NULL DEFAULT 0,
   remark VARCHAR(255),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -344,6 +361,32 @@ VALUES
 ('FG-PROD-01','电机外壳','型号 A','件','PRODUCT',10,1),
 ('FG-PROD-02','支架组件','型号 B','件','PRODUCT',10,1);
 
+-- 追加物料（用于演示：更多原材料/成品）
+INSERT INTO base_material(material_code, material_name, material_spec, unit, material_type, safety_stock, enabled)
+VALUES
+('RM-STEEL-01','钢板','Q235 2mm','张','RAW',120,1),
+('RM-STEEL-02','钢板','Q235 3mm','张','RAW',120,1),
+('RM-STEEL-03','钢板','Q345 3mm','张','RAW',140,1),
+('RM-STEEL-04','钢板','Q345 4mm','张','RAW',140,1),
+('RM-STEEL-05','钢板','不锈钢 3mm','张','RAW',160,1),
+
+('RM-PAINT-01','油漆','红色工业漆','桶','RAW',25,1),
+('RM-PAINT-02','油漆','白色工业漆','桶','RAW',25,1),
+('RM-PAINT-03','油漆','黑色工业漆','桶','RAW',30,1),
+('RM-PAINT-04','油漆','黄色工业漆','桶','RAW',30,1),
+('RM-PAINT-05','油漆','绿色工业漆','桶','RAW',35,1),
+
+('RM-SCREW-01','螺丝','M3*16','个','RAW',1200,1),
+('RM-SCREW-02','螺丝','M3*20','个','RAW',1200,1),
+('RM-SCREW-03','螺丝','M4*16','个','RAW',1500,1),
+('RM-SCREW-04','螺丝','M4*25','个','RAW',1500,1),
+('RM-SCREW-05','螺丝','M5*20','个','RAW',1800,1),
+
+('FG-PROD-03','外壳组件','型号 C','件','PRODUCT',12,1),
+('FG-PROD-04','传动支架','型号 D','件','PRODUCT',12,1),
+('FG-PROD-05','底座组件','型号 E','件','PRODUCT',15,1),
+('FG-PROD-06','功能模块','型号 F','件','PRODUCT',15,1);
+
 -- BOM（单层）
 INSERT INTO base_bom(product_material_id, material_id, qty, remark)
 VALUES
@@ -356,16 +399,87 @@ VALUES
 ((SELECT id FROM base_material WHERE material_code='FG-PROD-02'),
  (SELECT id FROM base_material WHERE material_code='RM-SCREW'), 4.000, '装配');
 
+-- 追加：补齐更多成品单层 BOM 配方（FG-PROD-03 ~ FG-PROD-06）
+INSERT INTO base_bom(product_material_id, material_id, qty, remark)
+VALUES
+((SELECT id FROM base_material WHERE material_code='FG-PROD-03'),
+ (SELECT id FROM base_material WHERE material_code='RM-STEEL-03'), 1.000, '钢板冲压'),
+((SELECT id FROM base_material WHERE material_code='FG-PROD-03'),
+ (SELECT id FROM base_material WHERE material_code='RM-PAINT-01'), 0.060, '喷漆'),
+
+((SELECT id FROM base_material WHERE material_code='FG-PROD-04'),
+ (SELECT id FROM base_material WHERE material_code='RM-STEEL-04'), 0.900, '焊接'),
+((SELECT id FROM base_material WHERE material_code='FG-PROD-04'),
+ (SELECT id FROM base_material WHERE material_code='RM-SCREW-01'), 3.200, '装配'),
+
+((SELECT id FROM base_material WHERE material_code='FG-PROD-05'),
+ (SELECT id FROM base_material WHERE material_code='RM-STEEL-05'), 0.750, '钢板冲压'),
+((SELECT id FROM base_material WHERE material_code='FG-PROD-05'),
+ (SELECT id FROM base_material WHERE material_code='RM-PAINT-02'), 0.070, '喷漆'),
+
+((SELECT id FROM base_material WHERE material_code='FG-PROD-06'),
+ (SELECT id FROM base_material WHERE material_code='RM-SCREW-03'), 2.500, '装配'),
+((SELECT id FROM base_material WHERE material_code='FG-PROD-06'),
+ (SELECT id FROM base_material WHERE material_code='RM-PAINT-03'), 0.040, '喷漆');
+
 -- 客户 / 供应商
 INSERT INTO base_customer(customer_name, contact_name, contact_phone, address)
 VALUES
 ('东莞精密电子有限公司','李工','13800000001','东莞松山湖'),
-('东莞伟信塑胶厂','王厂长','13800000002','东莞虎门');
+('东莞伟信塑胶厂','王厂长','13800000002','东莞虎门'),
+('东莞宏达电子有限公司','赵主管','13800000003','东莞清溪'),
+('东莞信诚机械有限公司','钱经理','13800000004','东莞长安'),
+('东莞科创自动化有限公司','孙经理','13800000005','东莞大朗'),
+('东莞富联金属制品有限公司','周主管','13800000006','东莞厚街'),
+('东莞盛源塑胶有限公司','吴厂长','13800000007','东莞塘厦');
 
 INSERT INTO base_supplier(supplier_name, contact_name, contact_phone, address, enabled)
 VALUES
 ('东莞钢材供应商','张经理','13900000001','东莞厚街',1),
-('东莞表面处理厂','刘工','13900000002','东莞长安',1);
+('东莞表面处理厂','刘工','13900000002','东莞长安',1),
+('东莞紧固件供应商','赵经理','13900000003','东莞长安',1),
+('东莞联合钢油供应商','陈经理','13900000004','东莞清溪',1),
+('东莞多品类化工供应商','钱工','13900000005','东莞大朗',1);
+
+-- 供应商-原材料可售映射（用于联动筛选）
+-- 约定：钢材供应商只售卖钢板类；表面处理厂只售卖油漆类；紧固件供应商只售卖螺丝类
+-- 联合钢油供应商：售卖部分钢板 + 部分油漆
+-- 多品类化工供应商：售卖部分油漆 + 部分螺丝
+INSERT INTO base_supplier_raw_material(supplier_id, material_id)
+VALUES
+((SELECT id FROM base_supplier WHERE supplier_name='东莞钢材供应商'), (SELECT id FROM base_material WHERE material_code='RM-STEEL')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞钢材供应商'), (SELECT id FROM base_material WHERE material_code='RM-STEEL-01')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞钢材供应商'), (SELECT id FROM base_material WHERE material_code='RM-STEEL-02')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞钢材供应商'), (SELECT id FROM base_material WHERE material_code='RM-STEEL-03')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞钢材供应商'), (SELECT id FROM base_material WHERE material_code='RM-STEEL-04')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞钢材供应商'), (SELECT id FROM base_material WHERE material_code='RM-STEEL-05')),
+
+((SELECT id FROM base_supplier WHERE supplier_name='东莞表面处理厂'), (SELECT id FROM base_material WHERE material_code='RM-PAINT')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞表面处理厂'), (SELECT id FROM base_material WHERE material_code='RM-PAINT-01')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞表面处理厂'), (SELECT id FROM base_material WHERE material_code='RM-PAINT-02')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞表面处理厂'), (SELECT id FROM base_material WHERE material_code='RM-PAINT-03')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞表面处理厂'), (SELECT id FROM base_material WHERE material_code='RM-PAINT-04')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞表面处理厂'), (SELECT id FROM base_material WHERE material_code='RM-PAINT-05')),
+
+((SELECT id FROM base_supplier WHERE supplier_name='东莞紧固件供应商'), (SELECT id FROM base_material WHERE material_code='RM-SCREW')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞紧固件供应商'), (SELECT id FROM base_material WHERE material_code='RM-SCREW-01')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞紧固件供应商'), (SELECT id FROM base_material WHERE material_code='RM-SCREW-02')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞紧固件供应商'), (SELECT id FROM base_material WHERE material_code='RM-SCREW-03')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞紧固件供应商'), (SELECT id FROM base_material WHERE material_code='RM-SCREW-04')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞紧固件供应商'), (SELECT id FROM base_material WHERE material_code='RM-SCREW-05')),
+
+((SELECT id FROM base_supplier WHERE supplier_name='东莞联合钢油供应商'), (SELECT id FROM base_material WHERE material_code='RM-STEEL-03')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞联合钢油供应商'), (SELECT id FROM base_material WHERE material_code='RM-STEEL-04')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞联合钢油供应商'), (SELECT id FROM base_material WHERE material_code='RM-STEEL-05')),
+
+((SELECT id FROM base_supplier WHERE supplier_name='东莞联合钢油供应商'), (SELECT id FROM base_material WHERE material_code='RM-PAINT-02')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞联合钢油供应商'), (SELECT id FROM base_material WHERE material_code='RM-PAINT-03')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞联合钢油供应商'), (SELECT id FROM base_material WHERE material_code='RM-PAINT-04')),
+
+((SELECT id FROM base_supplier WHERE supplier_name='东莞多品类化工供应商'), (SELECT id FROM base_material WHERE material_code='RM-PAINT-01')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞多品类化工供应商'), (SELECT id FROM base_material WHERE material_code='RM-PAINT-02')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞多品类化工供应商'), (SELECT id FROM base_material WHERE material_code='RM-SCREW-01')),
+((SELECT id FROM base_supplier WHERE supplier_name='东莞多品类化工供应商'), (SELECT id FROM base_material WHERE material_code='RM-SCREW-02'));
 
 -- 质量不良原因
 INSERT INTO quality_reason_dict(reason_code, reason_name, enabled, sort_no) VALUES
@@ -390,6 +504,33 @@ SELECT id, CASE material_code
            END
 FROM base_material
 WHERE material_code IN ('RM-STEEL','RM-PAINT','RM-SCREW','FG-PROD-01');
+
+-- 追加库存（更多原材料 + 成品）
+INSERT INTO inventory_stock(material_id, qty)
+VALUES
+((SELECT id FROM base_material WHERE material_code='RM-STEEL-01'), 420),
+((SELECT id FROM base_material WHERE material_code='RM-STEEL-02'), 520),
+((SELECT id FROM base_material WHERE material_code='RM-STEEL-03'), 620),
+((SELECT id FROM base_material WHERE material_code='RM-STEEL-04'), 420),
+((SELECT id FROM base_material WHERE material_code='RM-STEEL-05'), 480),
+
+((SELECT id FROM base_material WHERE material_code='RM-PAINT-01'), 80),
+((SELECT id FROM base_material WHERE material_code='RM-PAINT-02'), 90),
+((SELECT id FROM base_material WHERE material_code='RM-PAINT-03'), 100),
+((SELECT id FROM base_material WHERE material_code='RM-PAINT-04'), 110),
+((SELECT id FROM base_material WHERE material_code='RM-PAINT-05'), 95),
+
+((SELECT id FROM base_material WHERE material_code='RM-SCREW-01'), 5500),
+((SELECT id FROM base_material WHERE material_code='RM-SCREW-02'), 6000),
+((SELECT id FROM base_material WHERE material_code='RM-SCREW-03'), 6500),
+((SELECT id FROM base_material WHERE material_code='RM-SCREW-04'), 7000),
+((SELECT id FROM base_material WHERE material_code='RM-SCREW-05'), 7200),
+
+((SELECT id FROM base_material WHERE material_code='FG-PROD-02'), 220),
+((SELECT id FROM base_material WHERE material_code='FG-PROD-03'), 160),
+((SELECT id FROM base_material WHERE material_code='FG-PROD-04'), 180),
+((SELECT id FROM base_material WHERE material_code='FG-PROD-05'), 240),
+((SELECT id FROM base_material WHERE material_code='FG-PROD-06'), 200);
 
 -- 示例订单 + 明细
 INSERT INTO order_main(order_no, customer_id, status, delivery_date, remark)

@@ -7,12 +7,15 @@ import com.example.backend.module.base.entity.BaseBom;
 import com.example.backend.module.base.service.BaseBomService;
 import com.example.backend.module.inventory.entity.InventoryStock;
 import com.example.backend.module.inventory.mapper.InventoryStockMapper;
+import com.example.backend.module.order.entity.OrderMain;
+import com.example.backend.module.order.service.OrderMainService;
 import com.example.backend.module.production.entity.ProductionWorkOrder;
 import com.example.backend.module.production.service.ProductionWorkOrderService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -23,15 +26,18 @@ public class WorkOrderController {
     private final ProductionWorkOrderService workOrderService;
     private final BaseBomService baseBomService;
     private final InventoryStockMapper inventoryStockMapper;
+    private final OrderMainService orderMainService;
 
     public WorkOrderController(
             ProductionWorkOrderService workOrderService,
             BaseBomService baseBomService,
-            InventoryStockMapper inventoryStockMapper
+            InventoryStockMapper inventoryStockMapper,
+            OrderMainService orderMainService
     ) {
         this.workOrderService = workOrderService;
         this.baseBomService = baseBomService;
         this.inventoryStockMapper = inventoryStockMapper;
+        this.orderMainService = orderMainService;
     }
 
     @GetMapping
@@ -42,7 +48,70 @@ public class WorkOrderController {
             qw.eq(ProductionWorkOrder::getStatus, status);
         }
         qw.orderByDesc(ProductionWorkOrder::getId);
-        return ApiResponse.ok(workOrderService.list(qw));
+        List<ProductionWorkOrder> workOrders = workOrderService.list(qw);
+
+        // 根据订单优先级进行返回排序：置顶 -> 加急 -> 状态 -> 交货时间 -> 工作量
+        if (workOrders.isEmpty()) {
+            return ApiResponse.ok(workOrders);
+        }
+        List<Long> orderIds = workOrders.stream().map(ProductionWorkOrder::getOrderId).distinct().toList();
+        List<OrderMain> mains = orderMainService.list(
+                new LambdaQueryWrapper<OrderMain>().in(OrderMain::getId, orderIds)
+        );
+        Map<Long, OrderMain> mainMap = mains.stream()
+                .collect(Collectors.toMap(OrderMain::getId, m -> m, (a, b) -> a));
+
+        workOrders.sort((a, b) -> {
+            OrderMain am = mainMap.get(a.getOrderId());
+            OrderMain bm = mainMap.get(b.getOrderId());
+
+            boolean ap = am != null && am.isPinned();
+            boolean bp = bm != null && bm.isPinned();
+            int pinnedCmp = Boolean.compare(bp, ap);
+            if (pinnedCmp != 0) return pinnedCmp;
+
+            boolean au = am != null && am.isUrgent();
+            boolean bu = bm != null && bm.isUrgent();
+            int urgentCmp = Boolean.compare(bu, au);
+            if (urgentCmp != 0) return urgentCmp;
+
+            // 状态优先：待处理最优先，已完成最后
+            String as = am == null ? null : am.getStatus();
+            String bs = bm == null ? null : bm.getStatus();
+            int statusCmp = orderStatusRank(as) - orderStatusRank(bs);
+            if (statusCmp != 0) return statusCmp;
+
+            LocalDate ad = a.getDueDate() == null ? LocalDate.MAX : a.getDueDate();
+            LocalDate bd = b.getDueDate() == null ? LocalDate.MAX : b.getDueDate();
+            int dateCmp = ad.compareTo(bd); // 越早越前
+            if (dateCmp != 0) return dateCmp;
+
+            BigDecimal aq = a.getQty() == null ? BigDecimal.ZERO : a.getQty();
+            BigDecimal bq = b.getQty() == null ? BigDecimal.ZERO : b.getQty();
+            int qtyCmp = bq.compareTo(aq);
+            if (qtyCmp != 0) return qtyCmp; // 工作量越大越前
+            return 0;
+        });
+
+        // 注入 urgent 给前端展示（不落库字段）
+        for (ProductionWorkOrder wo : workOrders) {
+            OrderMain m = mainMap.get(wo.getOrderId());
+            wo.setUrgent(m != null && m.isUrgent());
+        }
+
+        return ApiResponse.ok(workOrders);
+    }
+
+    private int orderStatusRank(String status) {
+        if (status == null) return 999;
+        return switch (status) {
+            case "PENDING" -> 0;
+            case "PRODUCING" -> 1;
+            case "COMPLETED" -> 2;
+            case "SHIPPED" -> 3;
+            case "DONE" -> 4;
+            default -> 999;
+        };
     }
 
     @GetMapping("/{id}")

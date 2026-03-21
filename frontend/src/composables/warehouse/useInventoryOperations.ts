@@ -4,6 +4,7 @@
 import { reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as inventoryApi from '@/api/inventory'
+import * as messageApi from '@/api/message'
 import * as productionApi from '@/api/production'
 import * as orderApi from '@/api/order'
 import type {
@@ -217,7 +218,8 @@ export function useInventoryOperations(options: UseInventoryOperationsOptions) {
         bizType: BizType.PRODUCTION_IN,
         bizId: wo.workOrderNo,
       })
-      await productionApi.updateWorkOrderStatus(wo.id, 'STORED')
+      // 入库后工单进入“已完成”态，由订单状态与工单状态统一驱动
+      await productionApi.updateWorkOrderStatus(wo.id, 'COMPLETED')
 
       const relatedOrder = getOrders().find((o) => o.id === wo.orderId)
       if (relatedOrder) {
@@ -307,6 +309,7 @@ export function useInventoryOperations(options: UseInventoryOperationsOptions) {
       return
     }
     try {
+      // 为了流程清晰：这里保留手动入库，用于无采购单场景
       await inventoryApi.inbound({
         materialId: purchaseInboundForm.materialId,
         qty: purchaseInboundForm.qty,
@@ -318,6 +321,19 @@ export function useInventoryOperations(options: UseInventoryOperationsOptions) {
       await loadData()
     } catch (e: any) {
       ElMessage.error(e.response?.data?.message || '入库失败')
+    }
+  }
+
+  async function onRequestPurchase(materialId: number) {
+    try {
+      await messageApi.createPurchaseRequest({
+        materialId,
+        remark: '',
+        qty: String(purchaseInboundForm.qty > 0 ? purchaseInboundForm.qty : ''),
+      })
+      ElMessage.success('已发送采购请求给管理员')
+    } catch (e: any) {
+      ElMessage.error(e.response?.data?.message || '请求失败')
     }
   }
 
@@ -391,6 +407,7 @@ export function useInventoryOperations(options: UseInventoryOperationsOptions) {
     onInbound,
     onSalesOutbound,
     onPurchaseInbound,
+    onRequestPurchase,
     onOutbound,
     onAdjust,
   }

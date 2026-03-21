@@ -13,6 +13,8 @@ import com.example.backend.module.production.entity.ProductionWorkOrder;
 import com.example.backend.module.production.entity.ProductionWorkOrderProcess;
 import com.example.backend.module.production.service.ProductionWorkOrderProcessService;
 import com.example.backend.module.production.service.ProductionWorkOrderService;
+import com.example.backend.module.message.entity.MessageNotice;
+import com.example.backend.module.message.service.MessageNoticeService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,15 +26,18 @@ public class OrderMainServiceImpl extends ServiceImpl<OrderMainMapper, OrderMain
     private final OrderDetailService orderDetailService;
     private final ProductionWorkOrderService workOrderService;
     private final ProductionWorkOrderProcessService workOrderProcessService;
+    private final MessageNoticeService messageNoticeService;
 
     public OrderMainServiceImpl(
             OrderDetailService orderDetailService,
             ProductionWorkOrderService workOrderService,
-            ProductionWorkOrderProcessService workOrderProcessService
+            ProductionWorkOrderProcessService workOrderProcessService,
+            MessageNoticeService messageNoticeService
     ) {
         this.orderDetailService = orderDetailService;
         this.workOrderService = workOrderService;
         this.workOrderProcessService = workOrderProcessService;
+        this.messageNoticeService = messageNoticeService;
     }
 
     @Override
@@ -48,6 +53,12 @@ public class OrderMainServiceImpl extends ServiceImpl<OrderMainMapper, OrderMain
         main.setCustomerId(req.customerId());
         main.setStatus("PENDING");
         main.setDeliveryDate(req.deliveryDate());
+
+        // 优先级规则：加急 => 自动置顶（pinned=true）
+        boolean urgent = Boolean.TRUE.equals(req.urgent());
+        boolean pinned = Boolean.TRUE.equals(req.pinned()) || urgent;
+        main.setUrgent(urgent);
+        main.setPinned(pinned);
         this.save(main);
 
         OrderDetail detail = new OrderDetail();
@@ -61,7 +72,10 @@ public class OrderMainServiceImpl extends ServiceImpl<OrderMainMapper, OrderMain
         wo.setOrderId(main.getId());
         wo.setProductMaterialId(req.productMaterialId());
         wo.setQty(req.qty());
-        wo.setStatus("TO_PRODUCE");
+        boolean isReplenishOrder = main.getOrderNo() != null && main.getOrderNo().startsWith("RP");
+        // 补产单直接进入车间待生产列表（车间端当前按 PRODUCING 展示可报工工单）
+        // 同时避免进入仓库“工单待出库”（仓库侧按 TO_PRODUCE 展示）
+        wo.setStatus(isReplenishOrder ? "PRODUCING" : "TO_PRODUCE");
         wo.setDueDate(main.getDeliveryDate());
         workOrderService.save(wo);
 
@@ -71,6 +85,60 @@ public class OrderMainServiceImpl extends ServiceImpl<OrderMainMapper, OrderMain
         p.setSeqNo(1);
         p.setPlannedQty(req.qty());
         workOrderProcessService.save(p);
+
+        if (!isReplenishOrder) {
+            // 普通订单：给仓库端发送“工单待出库”提示
+            boolean woCreatedMsgExists = messageNoticeService.exists(new LambdaQueryWrapper<MessageNotice>()
+                    .eq(MessageNotice::getNoticeType, "WO_CREATED")
+                    .eq(MessageNotice::getRelatedType, "WORK_ORDER")
+                    .eq(MessageNotice::getRelatedId, wo.getWorkOrderNo())
+                    .eq(MessageNotice::getIsRead, false));
+            if (!woCreatedMsgExists) {
+                MessageNotice n = new MessageNotice();
+                n.setNoticeType("WO_CREATED");
+                n.setTitle("新增订单");
+                String deliveryText = main.getDeliveryDate() != null ? main.getDeliveryDate().toString() : "";
+                StringBuilder content = new StringBuilder();
+                content.append("工单号: ").append(wo.getWorkOrderNo()).append('\n');
+                if (!deliveryText.isBlank()) {
+                    content.append("交货期: ").append(deliveryText);
+                }
+                n.setContent(content.toString());
+                n.setLevel("INFO");
+                n.setRelatedType("WORK_ORDER");
+                n.setRelatedId(wo.getWorkOrderNo());
+                n.setIsRead(false);
+                n.setCreatedAt(LocalDateTime.now());
+                messageNoticeService.save(n);
+            }
+
+            // 普通订单加急时，给仓库端额外发送加急提示
+            if (Boolean.TRUE.equals(main.isUrgent())) {
+                boolean woUrgentMsgExists = messageNoticeService.exists(new LambdaQueryWrapper<MessageNotice>()
+                        .eq(MessageNotice::getNoticeType, "WO_URGENT")
+                        .eq(MessageNotice::getRelatedType, "WORK_ORDER")
+                        .eq(MessageNotice::getRelatedId, wo.getWorkOrderNo())
+                        .eq(MessageNotice::getIsRead, false));
+                if (!woUrgentMsgExists) {
+                    MessageNotice n = new MessageNotice();
+                    n.setNoticeType("WO_URGENT");
+                    n.setTitle("加急订单待出库");
+                    String deliveryText = main.getDeliveryDate() != null ? main.getDeliveryDate().toString() : "";
+                    StringBuilder content = new StringBuilder();
+                    content.append("工单号: ").append(wo.getWorkOrderNo()).append('\n');
+                    if (!deliveryText.isBlank()) {
+                        content.append("交货期: ").append(deliveryText);
+                    }
+                    n.setContent(content.toString());
+                    n.setLevel("WARN");
+                    n.setRelatedType("WORK_ORDER");
+                    n.setRelatedId(wo.getWorkOrderNo());
+                    n.setIsRead(false);
+                    n.setCreatedAt(LocalDateTime.now());
+                    messageNoticeService.save(n);
+                }
+            }
+        }
 
         return main.getId();
     }

@@ -10,10 +10,10 @@
  * - 待发货
  * - 成品管理
  * - 原材料管理
- * - 盘点调整
+ * - 采购消息（仅采购相关）
  */
 import { onMounted, ref } from 'vue'
-import { useWarehouseData, useInventoryOperations } from '@/composables/warehouse'
+import { useWarehouseData, useInventoryOperations, useWarehouseDashboardActions, useWarehousePageActions } from '@/composables/warehouse'
 import {
   StockOverviewTable,
   TodayRecordsTable,
@@ -22,7 +22,7 @@ import {
   PendingShipTable,
   ProductManagementPane,
   RawMaterialPane,
-  AdjustPane,
+  WarehousePurchaseMessagesPane,
 } from '@/components/warehouse'
 import type { WarehouseTabName } from '@/types/warehouse'
 
@@ -52,7 +52,6 @@ const {
   salesOutboundForm,
   purchaseInboundForm,
   outboundForm,
-  adjustForm,
   onSelectInboundWorkOrder,
   onSelectOutboundWorkOrder,
   onQuickOutbound,
@@ -60,9 +59,8 @@ const {
   onShipOrder,
   onInbound,
   onSalesOutbound,
-  onPurchaseInbound,
+  onRequestPurchase,
   onOutbound,
-  onAdjust,
 } = useInventoryOperations({
   loadData,
   getStockQty,
@@ -74,7 +72,43 @@ const {
   getOrders: () => state.orders,
 })
 
-onMounted(loadData)
+const {
+  purchaseMessagesRefreshToken,
+  popupCapacityWarningsAndMaybeJump,
+  onWarehouseInboundFromMessage,
+  onQuickOutboundFromWorkOrderMessage,
+  onCreateProductionFromStockLowMessage,
+  onHandleWarehouseInboundUrge,
+  handleCapacityWarningJump,
+  handleSalesOutboundAndRefreshMessages,
+  handleRawOutboundAndRefreshMessages,
+  handlePurchaseInbound,
+} = useWarehouseDashboardActions({
+  activeTab,
+  state,
+  pendingOutboundWorkOrders,
+  productMaterials,
+  rawMaterials,
+  getStockQty,
+  isWorkOrderStockSufficient,
+  loadData,
+  onRequestPurchase,
+  onSalesOutbound,
+  onOutbound,
+  purchaseInboundForm,
+  outboundForm,
+  salesOutboundForm,
+})
+
+const { refreshAll, initPage } = useWarehousePageActions({
+  loadData,
+  popupCapacityWarningsAndMaybeJump,
+  incrementMessageRefresh: () => {
+    purchaseMessagesRefreshToken.value++
+  },
+})
+
+onMounted(initPage)
 </script>
 
 <template>
@@ -86,7 +120,14 @@ onMounted(loadData)
             <div class="page-title">仓库管理</div>
             <div class="page-subtitle">库存出入库、发货管理</div>
           </div>
-          <el-button class="soft-btn" type="primary" :loading="loading" @click="loadData">刷新数据</el-button>
+          <el-button
+            class="soft-btn"
+            type="primary"
+            :loading="loading"
+            @click="refreshAll"
+          >
+            刷新数据
+          </el-button>
         </div>
       </template>
 
@@ -168,7 +209,7 @@ onMounted(loadData)
             :get-material-info="getMaterialInfo"
             @select-inbound-work-order="onSelectInboundWorkOrder"
             @inbound="onInbound"
-            @sales-outbound="onSalesOutbound"
+            @sales-outbound="handleSalesOutboundAndRefreshMessages"
           />
         </el-tab-pane>
 
@@ -181,21 +222,24 @@ onMounted(loadData)
             :pending-outbound-work-orders="pendingOutboundWorkOrders"
             :get-stock-qty="getStockQty"
             :get-material-info="getMaterialInfo"
+            :purchase-button-label="purchaseInboundForm.bizId ? '确认入库' : '申请采购'"
             @select-outbound-work-order="onSelectOutboundWorkOrder"
-            @purchase-inbound="onPurchaseInbound"
-            @outbound="onOutbound"
+            @purchase-inbound="handlePurchaseInbound"
+            @outbound="handleRawOutboundAndRefreshMessages"
           />
         </el-tab-pane>
 
-        <!-- 盘点调整 -->
-        <el-tab-pane label="盘点调整" name="adjust">
-          <AdjustPane
-            :adjust-form="adjustForm"
-            :materials="state.materials"
-            :get-stock-qty="getStockQty"
-            @adjust="onAdjust"
-          />
-        </el-tab-pane>
+        <!-- 消息：采购到货 + 工单临期/超期 -->
+        <WarehousePurchaseMessagesPane
+          :materials="state.materials"
+          :refresh-token="purchaseMessagesRefreshToken"
+          :pending-outbound-work-orders="pendingOutboundWorkOrders"
+          @inbound-from-message="onWarehouseInboundFromMessage"
+          @quick-outbound-from-workorder-message="onQuickOutboundFromWorkOrderMessage"
+          @goto-raw-material-outbound="({ msg }) => handleCapacityWarningJump(msg)"
+          @create-production-from-stock-low="onCreateProductionFromStockLowMessage"
+          @handle-warehouse-inbound-urge="onHandleWarehouseInboundUrge"
+        />
       </el-tabs>
     </el-card>
   </div>

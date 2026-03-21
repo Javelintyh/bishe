@@ -15,4 +15,4 @@ export const DEFAULT_BAD_REASONS: BadReason[] = [
 ]
 
 /** 看板饼图颜色配置 */
-export const KANBAN_CHART_COLORS = ['#ff9800', '#4caf50', '#2196f3', '#9c27b0']
+export const KANBAN_CHART_COLORS = ['#ff9800', '#4caf50', '#2196f3', '#9c27b0', '#67c23a']

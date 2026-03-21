@@ -9,6 +9,8 @@ export type OrderVO = {
   customerId: number
   status: OrderStatus
   deliveryDate?: string
+  pinned: boolean
+  urgent: boolean
   productMaterialId?: number
   qty?: number
   workOrderNo?: string
@@ -22,6 +24,8 @@ export type CreateOrderRequest = {
   productMaterialId: number
   qty: number
   deliveryDate?: string
+  urgent?: boolean
+  pinned?: boolean
 }
 
 export async function listOrders(status?: OrderStatus | '') {
@@ -33,6 +37,13 @@ export async function listOrders(status?: OrderStatus | '') {
 
 export async function createOrder(req: CreateOrderRequest) {
   const { data } = await http.post<ApiResponse<OrderVO>>('/api/orders', req)
+  return data
+}
+
+export async function setOrderPinned(id: number, pinned: boolean) {
+  const { data } = await http.put<ApiResponse<OrderVO>>(`/api/orders/${id}/pinned`, null, {
+    params: { pinned },
+  })
   return data
 }
 

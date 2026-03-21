@@ -27,7 +27,7 @@ public class MessageScanScheduler {
     @Scheduled(cron = "0 0/30 * * * ?")
     public void autoScan() {
         // 仅自动扫描工单/订单超期；库存预警已在出入库操作时实时生成
-        messageController.scan(null);
+        messageController.scanInternal(null);
     }
 }
 

@@ -21,7 +21,8 @@ interface UseMessageOperationsOptions {
  * Returns:
  * - onMarkMessageRead: 标记消息已读
  * - onScanMessages: 扫描消息
- * - onReceivePurchase: 采购收货
+ * - onMarkPurchased: 管理端标记采购单“已购入”
+ * - onReceivePurchaseFromMessage: 仓库端从消息执行入库
  */
 export function useMessageOperations(options: UseMessageOperationsOptions) {
   const { loadMessages, loadPurchaseOrders, loadStocks } = options
@@ -45,13 +46,38 @@ export function useMessageOperations(options: UseMessageOperationsOptions) {
     }
   }
 
-  async function onReceivePurchase(po: purchaseApi.PurchaseOrder) {
+  async function onMarkPurchased(po: purchaseApi.PurchaseOrder) {
     try {
-      await ElMessageBox.confirm(`确认将采购单 ${po.poNo} 全部收货并入库吗？`, '提示', { type: 'warning' })
-      await purchaseApi.receiveAll(po.id)
-      ElMessage.success('收货完成')
+      await ElMessageBox.confirm(`确认将采购单 ${po.poNo} 标记为“已购入”？`, '提示', { type: 'warning' })
+      await purchaseApi.markPurchased(po.id)
+      ElMessage.success('已标记为已购入')
+      await loadPurchaseOrders()
+      await loadMessages()
+    } catch {
+      // ignore
+    }
+  }
+
+  async function onReceivePurchaseFromMessage(msg: messageApi.MessageNotice) {
+    const poId = Number(msg.relatedId)
+    if (!poId) {
+      ElMessage.error('消息缺少采购单信息')
+      return
+    }
+    try {
+      await ElMessageBox.confirm(`确认将采购单 ${msg.relatedId} 全部入库吗？`, '提示', { type: 'warning' })
+      await purchaseApi.receiveAll(poId)
+      ElMessage.success('入库完成')
+      // 处理消息后标记为已读，确保消息从“未读消息列表”消失
+      try {
+        await messageApi.markRead(msg.id)
+        msg.read = true
+      } catch {
+        // ignore
+      }
       await loadPurchaseOrders()
       await loadStocks()
+      await loadMessages()
     } catch {
       // ignore
     }
@@ -60,6 +86,7 @@ export function useMessageOperations(options: UseMessageOperationsOptions) {
   return {
     onMarkMessageRead,
     onScanMessages,
-    onReceivePurchase,
+    onMarkPurchased,
+    onReceivePurchaseFromMessage,
   }
 }

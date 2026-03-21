@@ -12,6 +12,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
 
 @RestController
@@ -65,6 +67,17 @@ public class BaseBomController {
         if (req.lines().isEmpty()) {
             baseBomService.remove(new LambdaQueryWrapper<BaseBom>().eq(BaseBom::getProductMaterialId, productId));
             return ApiResponse.ok();
+        }
+
+        // 防止同一成品下重复配置同一原材料导致唯一键冲突（否则会直接 500）。
+        HashSet<Long> seenMaterialIds = new HashSet<>();
+        for (BomLineRequest line : req.lines()) {
+            if (!seenMaterialIds.add(line.materialId())) {
+                throw new ApiException(400, "BOM中同一原材料不能重复添加");
+            }
+            if (line.qty().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ApiException(400, "BOM配方用量必须大于 0");
+            }
         }
 
         baseBomService.remove(new LambdaQueryWrapper<BaseBom>().eq(BaseBom::getProductMaterialId, productId));

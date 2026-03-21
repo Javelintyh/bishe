@@ -29,6 +29,16 @@ public class OrderMain {
     @TableField("actual_delivery_date")
     private LocalDate actualDeliveryDate;
 
+    /**
+     * 加急：用于优先排队生产/出库
+     * 置顶：用于更高优先级（排序第 1）
+     */
+    @TableField("urgent")
+    private boolean urgent;
+
+    @TableField("pinned")
+    private boolean pinned;
+
     private String remark;
 
     @TableField("created_at")

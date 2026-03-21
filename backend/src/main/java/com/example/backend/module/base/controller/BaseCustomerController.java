@@ -15,7 +15,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/base/customers")
-@PreAuthorize("hasRole('ADMIN')")
 public class BaseCustomerController {
     private final BaseCustomerService baseCustomerService;
 
@@ -24,6 +23,7 @@ public class BaseCustomerController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','WAREHOUSE')")
     public ApiResponse<List<BaseCustomer>> list(@RequestParam(required = false) String keyword) {
         LambdaQueryWrapper<BaseCustomer> qw = new LambdaQueryWrapper<>();
         if (keyword != null && !keyword.isBlank()) {
@@ -34,6 +34,7 @@ public class BaseCustomerController {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<BaseCustomer> create(@Valid @RequestBody CustomerCreateRequest req) {
         boolean exists = baseCustomerService.exists(
                 new LambdaQueryWrapper<BaseCustomer>().eq(BaseCustomer::getCustomerName, req.customerName())
@@ -50,6 +51,7 @@ public class BaseCustomerController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<BaseCustomer> update(@PathVariable Long id, @Valid @RequestBody CustomerUpdateRequest req) {
         BaseCustomer c = baseCustomerService.getById(id);
         if (c == null) {
@@ -63,6 +65,7 @@ public class BaseCustomerController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         baseCustomerService.removeById(id);
         return ApiResponse.ok();

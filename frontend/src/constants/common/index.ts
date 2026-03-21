@@ -9,6 +9,7 @@ export const PAGE_SIZE = 5
 export const WorkOrderStatus = {
   TO_PRODUCE: 'TO_PRODUCE',
   PRODUCING: 'PRODUCING',
+  COMPLETED: 'COMPLETED',
   DONE: 'DONE',
   STORED: 'STORED',
 } as const
@@ -19,6 +20,7 @@ export type WorkOrderStatusCode = (typeof WorkOrderStatus)[keyof typeof WorkOrde
 export const WORK_ORDER_STATUS_LABELS: Record<WorkOrderStatusCode, string> = {
   [WorkOrderStatus.TO_PRODUCE]: '待生产',
   [WorkOrderStatus.PRODUCING]: '生产中',
+  [WorkOrderStatus.COMPLETED]: '已完成',
   [WorkOrderStatus.DONE]: '已完成',
   [WorkOrderStatus.STORED]: '已入库',
 }

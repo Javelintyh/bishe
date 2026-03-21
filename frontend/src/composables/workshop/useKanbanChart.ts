@@ -30,6 +30,7 @@ export function useKanbanChart() {
     const statusCount: Record<string, number> = {
       TO_PRODUCE: 0,
       PRODUCING: 0,
+      COMPLETED: 0,
       DONE: 0,
       STORED: 0,
     }
@@ -48,6 +49,7 @@ export function useKanbanChart() {
           data: [
             { value: statusCount.TO_PRODUCE, name: WORK_ORDER_STATUS_LABELS.TO_PRODUCE },
             { value: statusCount.PRODUCING, name: WORK_ORDER_STATUS_LABELS.PRODUCING },
+            { value: statusCount.COMPLETED, name: WORK_ORDER_STATUS_LABELS.COMPLETED },
             { value: statusCount.DONE, name: WORK_ORDER_STATUS_LABELS.DONE },
             { value: statusCount.STORED, name: WORK_ORDER_STATUS_LABELS.STORED },
           ],

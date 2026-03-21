@@ -6,6 +6,8 @@ export * from './useUserOperations'
 export * from './usePurchaseForm'
 export * from './useMessageOperations'
 export * from './useExportReport'
+export * from './useAdminDashboardActions'
+export * from './useAdminPageActions'
 
 // 同时导出通用组合式函数
 export * from '../common'

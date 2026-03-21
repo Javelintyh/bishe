@@ -10,6 +10,8 @@ public record OrderVO(
         Long customerId,
         String status,
         LocalDate deliveryDate,
+        boolean pinned,
+        boolean urgent,
         Long productMaterialId,
         BigDecimal qty,
         String workOrderNo,

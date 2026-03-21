@@ -5,6 +5,8 @@ export * from './useWorkshopData'
 export * from './useReportForm'
 export * from './useBomEditor'
 export * from './useKanbanChart'
+export * from './useWorkshopMessages'
+export * from './useWorkshopPageActions'
 
 // 同时导出通用组合式函数
 export * from '../common'

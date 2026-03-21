@@ -55,6 +55,11 @@ export type SupplierCreateRequest = {
   contactName?: string
   contactPhone?: string
   address?: string
+  /**
+   * 供应商可售原材料（用于 supplier - raw materials 映射）
+   * - 未传/空数组：表示不绑定可售原材料
+   */
+  rawMaterialIds?: number[]
 }
 
 export type SupplierUpdateRequest = SupplierCreateRequest & {
@@ -151,5 +156,21 @@ export async function listBom(productMaterialId: number) {
 
 export async function bulkSetBom(req: BomBulkSetRequest) {
   const { data } = await http.post<ApiResponse<void>>('/api/base/boms/bulk-set', req)
+  return data
+}
+
+/**
+ * 获取指定供应商可售的原材料（用于采购单“公司-物料”联动筛选）
+ */
+export async function listRawMaterialsBySupplier(supplierId: number) {
+  const { data } = await http.get<ApiResponse<Material[]>>(`/api/base/suppliers/${supplierId}/raw-materials`)
+  return data
+}
+
+/**
+ * 获取包含指定原材料的供应商（当用户需要反向筛选时可用）
+ */
+export async function listSuppliersByRawMaterial(materialId: number) {
+  const { data } = await http.get<ApiResponse<Supplier[]>>(`/api/base/materials/${materialId}/suppliers`)
   return data
 }

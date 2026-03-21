@@ -1,6 +1,6 @@
 import { http, type ApiResponse } from './http'
 
-export type WorkOrderStatus = 'TO_PRODUCE' | 'PRODUCING' | 'DONE' | 'STORED'
+export type WorkOrderStatus = 'TO_PRODUCE' | 'PRODUCING' | 'COMPLETED' | 'DONE' | 'STORED'
 
 export type ProductionWorkOrder = {
   id: number
@@ -11,6 +11,7 @@ export type ProductionWorkOrder = {
   status: WorkOrderStatus
   dueDate?: string
   assigneeUserId?: number
+  urgent?: boolean
 }
 
 export type ProductionReport = {

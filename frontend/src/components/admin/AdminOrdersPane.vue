@@ -12,15 +12,61 @@ const props = defineProps<{
   orders: orderApi.OrderVO[]
   customers: baseApi.Customer[]
   materials: baseApi.Material[]
+  onAfterCreateByMessage?: (messageId: number) => void | Promise<void>
 }>()
 
 const emit = defineEmits<{
   (e: 'refresh'): void
 }>()
 
+const sortedOrders = computed(() => {
+  return [...props.orders].sort((a, b) => {
+    const pinnedCmp = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+    if (pinnedCmp !== 0) return pinnedCmp
+
+    const urgentCmp = Number(Boolean(b.urgent)) - Number(Boolean(a.urgent))
+    if (urgentCmp !== 0) return urgentCmp
+
+    // 置顶后按状态优先级
+    const rank = (status: orderApi.OrderStatus) => {
+      switch (status) {
+        case 'PENDING':
+          return 0
+        case 'PRODUCING':
+          return 1
+        case 'COMPLETED':
+          return 2
+        case 'SHIPPED':
+          return 3
+        case 'DONE':
+          return 4
+        default:
+          return 999
+      }
+    }
+    const statusCmp = rank(a.status) - rank(b.status)
+    if (statusCmp !== 0) return statusCmp
+
+    const ad = a.deliveryDate ? new Date(a.deliveryDate).getTime() : Number.MAX_SAFE_INTEGER
+    const bd = b.deliveryDate ? new Date(b.deliveryDate).getTime() : Number.MAX_SAFE_INTEGER
+    const dateCmp = ad - bd // 越早越前
+    if (dateCmp !== 0) return dateCmp
+
+    const aq = a.qty ?? 0
+    const bq = b.qty ?? 0
+    const qtyCmp = Number(bq) - Number(aq) // 工作量越大越前
+    if (qtyCmp !== 0) return qtyCmp
+    return 0
+  })
+})
+
+function orderRowClassName({ row }: { row: orderApi.OrderVO }) {
+  return row.pinned ? 'order-pinned-row' : ''
+}
+
 const pagedOrders = computed(() => {
   const start = (currentPage.value - 1) * PAGE_SIZE
-  return props.orders.slice(start, start + PAGE_SIZE)
+  return sortedOrders.value.slice(start, start + PAGE_SIZE)
 })
 
 const customerMap = computed(() => new Map(props.customers.map(c => [c.id, c])))
@@ -43,6 +89,7 @@ const productMaterials = computed(() => props.materials.filter(m => m.materialTy
 const showDialog = ref(false)
 const isEdit = ref(false)
 const editingId = ref<number | null>(null)
+const pendingCreateByMessageId = ref<number | null>(null)
 const submitting = ref(false)
 const form = reactive({
   orderNo: '',
@@ -50,6 +97,8 @@ const form = reactive({
   productMaterialId: undefined as number | undefined,
   qty: 1,
   deliveryDate: '',
+  urgent: false,
+  pinned: false,
 })
 
 function genOrderNo() {
@@ -66,22 +115,28 @@ function genOrderNo() {
 function openDialog() {
   isEdit.value = false
   editingId.value = null
+  pendingCreateByMessageId.value = null
   form.orderNo = genOrderNo()
   form.customerId = undefined
   form.productMaterialId = undefined
   form.qty = 1
   form.deliveryDate = ''
+  form.urgent = false
+  form.pinned = false
   showDialog.value = true
 }
 
 function openEditDialog(row: orderApi.OrderVO) {
   isEdit.value = true
   editingId.value = row.id
+  pendingCreateByMessageId.value = null
   form.orderNo = row.orderNo
   form.customerId = row.customerId
   form.productMaterialId = row.productMaterialId
   form.qty = row.qty ?? 1
   form.deliveryDate = row.deliveryDate ?? ''
+  form.urgent = Boolean(row.urgent)
+  form.pinned = Boolean(row.pinned)
   showDialog.value = true
 }
 
@@ -90,16 +145,47 @@ function fillExample() {
     form.orderNo = genOrderNo()
   }
   if (props.customers.length > 0) {
-    form.customerId = props.customers[0].id
+    const firstCustomer = props.customers[0]
+    if (firstCustomer) form.customerId = firstCustomer.id
   }
   if (productMaterials.value.length > 0) {
-    form.productMaterialId = productMaterials.value[0].id
+    const firstProduct = productMaterials.value[0]
+    if (firstProduct) form.productMaterialId = firstProduct.id
   }
   form.qty = 100
   const nextWeek = new Date()
   nextWeek.setDate(nextWeek.getDate() + 7)
-  form.deliveryDate = nextWeek.toISOString().split('T')[0]
+  form.deliveryDate = nextWeek.toISOString().split('T')[0] ?? ''
 }
+
+function openNewOrderFromStockLow(prefill: {
+  messageId: number
+  customerId: number
+  productMaterialId: number
+  qty: number
+  deliveryDate: string
+}) {
+  isEdit.value = false
+  editingId.value = null
+  pendingCreateByMessageId.value = prefill.messageId
+
+  form.orderNo = genOrderNo()
+  form.customerId = prefill.customerId
+  form.productMaterialId = prefill.productMaterialId
+  form.qty = prefill.qty
+  form.deliveryDate = prefill.deliveryDate
+  form.urgent = false
+  form.pinned = false
+  showDialog.value = true
+}
+
+function handleDialogClose() {
+  pendingCreateByMessageId.value = null
+}
+
+defineExpose({
+  openNewOrderFromStockLow,
+})
 
 async function onSubmit() {
   if (!form.orderNo.trim()) {
@@ -121,30 +207,55 @@ async function onSubmit() {
   submitting.value = true
   try {
     if (isEdit.value && editingId.value) {
+      // 更新时：加急 => 自动置顶（保证优先级一致）
+      if (form.urgent) form.pinned = true
       await orderApi.updateOrder(editingId.value, {
         orderNo: form.orderNo.trim(),
         customerId: form.customerId,
         productMaterialId: form.productMaterialId,
         qty: form.qty,
         deliveryDate: form.deliveryDate || undefined,
+        urgent: form.urgent,
+        pinned: form.pinned,
       })
       ElMessage.success('订单更新成功，工单已同步更新')
     } else {
+      // 新建时：加急 => 自动置顶（pinned=true）
+      if (form.urgent) form.pinned = true
       await orderApi.createOrder({
         orderNo: form.orderNo.trim(),
         customerId: form.customerId,
         productMaterialId: form.productMaterialId,
         qty: form.qty,
         deliveryDate: form.deliveryDate || undefined,
+        urgent: form.urgent,
+        pinned: form.pinned,
       })
       ElMessage.success('订单创建成功，工单已自动生成')
     }
+
+    // 如果此次创建是由“库存预警消息”触发，则在创建成功后回调置已读
+    const mid = pendingCreateByMessageId.value
+    if (!isEdit.value && mid != null && props.onAfterCreateByMessage) {
+      pendingCreateByMessageId.value = null
+      await props.onAfterCreateByMessage(mid)
+    }
+
     showDialog.value = false
     emit('refresh')
   } catch (e: any) {
     ElMessage.error(e?.message || (isEdit.value ? '更新失败' : '创建失败'))
   } finally {
     submitting.value = false
+  }
+}
+
+async function onTogglePin(row: orderApi.OrderVO) {
+  try {
+    await orderApi.setOrderPinned(row.id, !row.pinned)
+    emit('refresh')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '置顶更新失败')
   }
 }
 
@@ -179,11 +290,19 @@ async function onUpdateStatus(row: orderApi.OrderVO, status: orderApi.OrderStatu
     <div class="action-bar" style="margin-bottom: 12px">
       <el-button type="primary" size="small" @click="openDialog">新增订单</el-button>
     </div>
-    <el-table :data="pagedOrders" style="width: 100%" size="small">
+    <el-table
+      :data="pagedOrders"
+      style="width: 100%"
+      size="small"
+      :row-class-name="orderRowClassName"
+    >
       <el-table-column prop="orderNo" label="订单号" width="140" />
       <el-table-column label="客户" min-width="120">
         <template #default="{ row }">
-          {{ getCustomerName(row.customerId) }}
+          <span>
+            {{ getCustomerName(row.customerId) }}
+            <span v-if="row.urgent" class="urgent-label">（急）</span>
+          </span>
         </template>
       </el-table-column>
       <el-table-column label="状态" width="100">
@@ -219,6 +338,9 @@ async function onUpdateStatus(row: orderApi.OrderVO, status: orderApi.OrderStatu
       <el-table-column label="操作" width="120" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" size="small" @click="openEditDialog(row)">编辑</el-button>
+          <el-button link type="primary" size="small" @click="onTogglePin(row)">
+            {{ row.pinned ? '取消置顶' : '置顶' }}
+          </el-button>
           <el-button link type="danger" size="small" @click="onDelete(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -232,7 +354,12 @@ async function onUpdateStatus(row: orderApi.OrderVO, status: orderApi.OrderStatu
       style="margin-top: 12px; justify-content: flex-end"
     />
 
-    <el-dialog v-model="showDialog" :title="isEdit ? '编辑订单' : '新增订单'" width="500px">
+    <el-dialog
+      v-model="showDialog"
+      :title="isEdit ? '编辑订单' : '新增订单'"
+      width="500px"
+      @close="handleDialogClose"
+    >
       <el-form label-width="80px" @submit.prevent>
         <el-form-item label="订单号">
           <el-input v-model="form.orderNo" placeholder="自动生成" :disabled="isEdit" />
@@ -260,6 +387,9 @@ async function onUpdateStatus(row: orderApi.OrderVO, status: orderApi.OrderStatu
         <el-form-item label="数量">
           <el-input-number v-model="form.qty" :min="1" style="width: 100%" />
         </el-form-item>
+        <el-form-item label="加急">
+          <el-checkbox v-model="form.urgent">是否加急</el-checkbox>
+        </el-form-item>
         <el-form-item label="交货期">
           <el-date-picker v-model="form.deliveryDate" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width: 100%" />
         </el-form-item>
@@ -272,4 +402,22 @@ async function onUpdateStatus(row: orderApi.OrderVO, status: orderApi.OrderStatu
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+:deep(.order-pinned-row),
+:deep(.order-pinned-row td) {
+  /* 模仿 Element Plus 表格“当前行(鼠标选中)”的浅蓝色高亮 */
+  background-color: #ecf5ff !important;
+}
+
+:deep(.order-pinned-row:hover td) {
+  background-color: #ecf5ff !important;
+}
+
+.urgent-label {
+  margin-left: 6px;
+  color: #f56c6c;
+  font-weight: 600;
+}
+</style>
 

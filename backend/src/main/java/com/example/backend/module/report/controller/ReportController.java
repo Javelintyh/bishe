@@ -47,18 +47,20 @@ public class ReportController {
     @GetMapping("/order-summary")
     public ApiResponse<OrderSummaryDTO> orderSummary() {
         long total = orderMainService.count();
-        long delivered = orderMainService.count(new LambdaQueryWrapper<OrderMain>().eq(OrderMain::getStatus, "DELIVERED"));
+        long delivered = orderMainService.count(new LambdaQueryWrapper<OrderMain>()
+                .in(OrderMain::getStatus, "SHIPPED", "COMPLETED", "DONE"));
         long onTime = orderMainService.count(new LambdaQueryWrapper<OrderMain>()
-                .eq(OrderMain::getStatus, "DELIVERED")
-                .isNotNull(OrderMain::getActualDeliveryDate)
-                .apply("actual_delivery_date <= delivery_date"));
+                .in(OrderMain::getStatus, "COMPLETED", "DONE")
+                .isNotNull(OrderMain::getDeliveryDate)
+                .apply("COALESCE(actual_delivery_date, DATE(updated_at)) <= delivery_date"));
         return ApiResponse.ok(new OrderSummaryDTO(total, delivered, onTime));
     }
 
     @GetMapping("/production-summary")
     public ApiResponse<ProductionSummaryDTO> productionSummary() {
         long total = workOrderService.count();
-        long done = workOrderService.count(new LambdaQueryWrapper<ProductionWorkOrder>().eq(ProductionWorkOrder::getStatus, "DONE"));
+        long done = workOrderService.count(new LambdaQueryWrapper<ProductionWorkOrder>()
+                .in(ProductionWorkOrder::getStatus, "COMPLETED", "DONE"));
         long producing = workOrderService.count(new LambdaQueryWrapper<ProductionWorkOrder>().eq(ProductionWorkOrder::getStatus, "PRODUCING"));
         return ApiResponse.ok(new ProductionSummaryDTO(total, done, producing));
     }

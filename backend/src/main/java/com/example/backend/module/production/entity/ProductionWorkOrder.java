@@ -40,5 +40,9 @@ public class ProductionWorkOrder {
 
     @TableField("updated_at")
     private LocalDateTime updatedAt;
+
+    // 是否来自“加急订单”（用于前端展示，不落库）
+    @TableField(exist = false)
+    private Boolean urgent;
 }
 

@@ -11,7 +11,9 @@ public record CreateOrderRequest(
         @NotNull Long customerId,
         @NotNull Long productMaterialId,
         @NotNull BigDecimal qty,
-        LocalDate deliveryDate
+        LocalDate deliveryDate,
+        Boolean urgent,
+        Boolean pinned
 ) {
 }
 

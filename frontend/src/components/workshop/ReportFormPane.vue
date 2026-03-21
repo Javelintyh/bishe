@@ -42,7 +42,11 @@ const emit = defineEmits<{
       <el-input-number v-model="reportForm.badQty" :min="0" />
     </el-form-item>
     <el-form-item label="不良原因" v-if="reportForm.badQty > 0">
-      <el-select v-model="reportForm.badReasonCode" placeholder="选择原因">
+      <el-select v-model="reportForm.badReasonCode" 
+      clearable
+      filterable
+      style="width: 220px"
+      placeholder="选择原因">
         <el-option
           v-for="r in reasons"
           :key="r.code"
